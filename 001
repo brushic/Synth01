@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Рисунковый синтезатор</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #101014;
+    color: #fff;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px 4px;
+  }
+  h1 {
+    font-size: 14px;
+    margin: 0;
+    flex: 1;
+    opacity: .75;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: #2a2a33;
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn:active { background: #3a3a47; }
+  #pads {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 8px;
+    padding: 8px;
+  }
+  .pad {
+    position: relative;
+    border: 0;
+    border-radius: 22px;
+    background-color: hsl(var(--hue) 75% 62%);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow:
+      inset 0 -6px rgba(0,0,0,.16),
+      0 4px 10px rgba(0,0,0,.28);
+    transition: transform .06s ease, filter .06s ease;
+    touch-action: none;
+    padding: 0;
+  }
+  .pad:active,
+  .pad.active {
+    transform: scale(.96);
+    filter: brightness(1.18);
+  }
+  .pad.empty::after {
+    content: "+";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 42px;
+    font-weight: 300;
+    color: rgba(255,255,255,.8);
+  }
+  @media (orientation: landscape) {
+    #pads {
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+    }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Рисунковый синтезатор</h1>
+    <label class="btn">
+      Добавить
+      <input id="fileInput" type="file" accept="image/*" multiple hidden>
+    </label>
+    <button id="clearBtn" class="btn" type="button">Сброс</button>
+  </header>
+
+  <div id="pads"></div>
+
+<script>
+const PAD_COUNT = 12;
+const padsEl = document.getElementById('pads');
+const fileInput = document.getElementById('fileInput');
+const clearBtn = document.getElementById('clearBtn');
+
+// Пентатоника: C D E G A. Нельзя сыграть "фальшиво".
+const scale = [0, 2, 4, 7, 9];
+let ctx = null;
+let master = null;
+let objectUrls = [];
+
+function initAudio() {
+  if (!ctx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    ctx = new AudioCtx();
+
+    master = ctx.createGain();
+    master.gain.value = 0.16; // безопасная громкость
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -18;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 6;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+
+    master.connect(compressor).connect(ctx.destination);
+  }
+
+  if (ctx.state === 'suspended') {
+    ctx.resume();
+  }
+}
+
+function playNote(index) {
+  initAudio();
+
+  const now = ctx.currentTime;
+  const semitone = scale[index % scale.length] + 12 * Math.floor(index / scale.length);
+  const freq = 261.63 * Math.pow(2, semitone / 12); // от C4
+
+  const osc1 = ctx.createOscillator();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(freq, now);
+
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(freq * 2, now);
+
+  const gain1 = ctx.createGain();
+  const gain2 = ctx.createGain();
+
+  gain1.gain.setValueAtTime(0, now);
+  gain1.gain.linearRampToValueAtTime(0.9, now + 0.01);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+
+  gain2.gain.setValueAtTime(0, now);
+  gain2.gain.linearRampToValueAtTime(0.15, now + 0.01);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(1800, now);
+  filter.Q.value = 0.7;
+
+  osc1.connect(gain1).connect(filter);
+  osc2.connect(gain2).connect(filter);
+  filter.connect(master);
+
+  osc1.start(now);
+  osc2.start(now);
+  osc1.stop(now + 0.8);
+  osc2.stop(now + 0.8);
+}
+
+function createPads() {
+  for (let i = 0; i < PAD_COUNT; i++) {
+    const pad = document.createElement('button');
+    pad.type = 'button';
+    pad.className = 'pad empty';
+    pad.dataset.index = i;
+    pad.style.setProperty('--hue', (i * 37) % 360);
+
+    pad.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      playNote(i);
+      pad.classList.add('active');
+    });
+
+    const release = () => pad.classList.remove('active');
+    pad.addEventListener('pointerup', release);
+    pad.addEventListener('pointercancel', release);
+    pad.addEventListener('pointerleave', release);
+
+    padsEl.appendChild(pad);
+  }
+}
+
+fileInput.addEventListener('change', () => {
+  const files = [...fileInput.files].slice(0, PAD_COUNT);
+  const pads = [...padsEl.children];
+
+  objectUrls.forEach((url) => URL.revokeObjectURL(url));
+  objectUrls = [];
+
+  files.forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    objectUrls.push(url);
+    pads[i].style.backgroundImage = `url("${url}")`;
+    pads[i].classList.remove('empty');
+  });
+
+  fileInput.value = '';
+});
+
+clearBtn.addEventListener('click', () => {
+  objectUrls.forEach((url) => URL.revokeObjectURL(url));
+  objectUrls = [];
+
+  [...padsEl.children].forEach((pad) => {
+    pad.style.backgroundImage = '';
+    pad.classList.add('empty');
+  });
+});
+
+createPads();
+</script>
+</body>
+</html>
