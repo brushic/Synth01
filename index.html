@@ -117,19 +117,19 @@ const padsEl = document.getElementById('pads');
 const fileInput = document.getElementById('fileInput');
 const clearBtn = document.getElementById('clearBtn');
 
-// Пентатоника: C D E G A. Нельзя сыграть "фальшиво".
 const scale = [0, 2, 4, 7, 9];
 let ctx = null;
 let master = null;
 let objectUrls = [];
 
-function initAudio() {
+// Хитрость для iOS: разблокируем звук при первом касании экрана
+document.addEventListener('touchstart', function unlockAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     ctx = new AudioCtx();
 
     master = ctx.createGain();
-    master.gain.value = 0.16; // безопасная громкость
+    master.gain.value = 0.5; // Сделал звук заметно громче (было 0.16)
 
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -18;
@@ -144,14 +144,24 @@ function initAudio() {
   if (ctx.state === 'suspended') {
     ctx.resume();
   }
-}
+
+  // Создаем беззвучный буфер, чтобы окончательно "разбудить" динамик
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+
+  document.removeEventListener('touchstart', unlockAudio);
+}, { once: true });
+
 
 function playNote(index) {
-  initAudio();
+  if (!ctx) return; // Если звук еще не разблокирован
 
   const now = ctx.currentTime;
   const semitone = scale[index % scale.length] + 12 * Math.floor(index / scale.length);
-  const freq = 261.63 * Math.pow(2, semitone / 12); // от C4
+  const freq = 261.63 * Math.pow(2, semitone / 12);
 
   const osc1 = ctx.createOscillator();
   osc1.type = 'sine';
