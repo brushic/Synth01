@@ -49,6 +49,34 @@
   }
   .btn:active { background: #444455; }
   
+  /* Панель управления (крутилки) */
+  #controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    padding: 10px 15px;
+    background: #222230;
+    margin: 0 10px 5px;
+    border-radius: 15px;
+    border: 1px solid #333344;
+  }
+  .control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-item label {
+    font-size: 11px;
+    color: #aaa;
+    display: flex;
+    justify-content: space-between;
+  }
+  .control-item input[type=range] {
+    width: 100%;
+    accent-color: #f1c40f; /* Пчелиный цвет */
+    height: 20px;
+  }
+
   /* Область с картинкой */
   #display-area {
     flex: 1;
@@ -71,7 +99,7 @@
     transition: transform 0.1s ease;
   }
   #placeholder {
-    font-size: 18px;
+    font-size: 16px;
     text-align: center;
     opacity: 0.5;
   }
@@ -79,7 +107,7 @@
   /* Клавиатура */
   #keyboard {
     display: flex;
-    height: 160px;
+    height: 140px;
     padding: 10px;
     gap: 3px;
   }
@@ -98,10 +126,11 @@
     transition: all 0.05s;
     cursor: pointer;
     border: none;
+    touch-action: none;
   }
   .key.active {
-    background: #e0e0e0;
-    box-shadow: inset 0 -2px 0 #bbb;
+    background: #f1c40f; /* Желтый при нажатии */
+    box-shadow: inset 0 -2px 0 #d4ac0d;
     transform: translateY(4px);
   }
   .key.empty-key {
@@ -129,6 +158,26 @@
     <button id="clearBtn" class="btn" type="button">Сброс</button>
   </header>
 
+  <!-- Крутилки -->
+  <div id="controls">
+    <div class="control-item">
+      <label>Вибрато <span id="val-vib">12</span> Гц</label>
+      <input type="range" id="vib" min="1" max="30" value="12">
+    </div>
+    <div class="control-item">
+      <label>Жужжание <span id="val-trem">30</span> Гц</label>
+      <input type="range" id="trem" min="5" max="60" value="30">
+    </div>
+    <div class="control-item">
+      <label>Глубина <span id="val-depth">0.5</span></label>
+      <input type="range" id="depth" min="0" max="0.9" step="0.1" value="0.5">
+    </div>
+    <div class="control-item">
+      <label>Тембр <span id="val-filter">2000</span> Гц</label>
+      <input type="range" id="filter" min="500" max="5000" step="100" value="2000">
+    </div>
+  </div>
+
   <div id="display-area">
     <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 8 рисунков</div>
     <img id="animal-img" alt="Животное">
@@ -140,21 +189,29 @@
 
 <script>
 const NUM_KEYS = 8;
-// Ноты: До, Ре, Ми, Фа, Соль, Ля, Си, До (следующей октавы)
 const NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
 const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си', 'До²'];
 
 let ctx = null;
 let master = null;
 let images = new Array(NUM_KEYS).fill(null);
+let activeNotes = {}; // Здесь храним играющие сейчас ноты
 
-// Хитрость для iOS: разблокируем звук при первом касании экрана
+// Значения крутилок
+const params = {
+  vibRate: 12,
+  tremRate: 30,
+  tremDepth: 0.5,
+  filterCutoff: 2000
+};
+
+// Разблокировка звука для iOS
 document.addEventListener('touchstart', function unlockAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     ctx = new AudioCtx();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = 0.6;
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -18;
     compressor.knee.value = 20;
@@ -173,69 +230,175 @@ document.addEventListener('touchstart', function unlockAudio() {
   document.removeEventListener('touchstart', unlockAudio);
 }, { once: true });
 
-// НОВАЯ ФУНКЦИЯ ЗВУКА ПЧЕЛЫ
+// Обработка крутилок
+function updateParams() {
+  params.vibRate = +document.getElementById('vib').value;
+  params.tremRate = +document.getElementById('trem').value;
+  params.tremDepth = +document.getElementById('depth').value;
+  params.filterCutoff = +document.getElementById('filter').value;
+
+  document.getElementById('val-vib').textContent = params.vibRate;
+  document.getElementById('val-trem').textContent = params.tremRate;
+  document.getElementById('val-depth').textContent = params.tremDepth.toFixed(1);
+  document.getElementById('val-filter').textContent = params.filterCutoff;
+
+  // Обновляем звук "на лету", если сейчас что-то играет
+  const now = ctx ? ctx.currentTime : 0;
+  Object.values(activeNotes).forEach(note => {
+    note.lfo.frequency.setTargetAtTime(params.vibRate, now, 0.05);
+    note.tremoloLfo.frequency.setTargetAtTime(params.tremRate, now, 0.05);
+    note.tremoloDepthGain.gain.setTargetAtTime(params.tremDepth, now, 0.05);
+    note.filter.frequency.setTargetAtTime(params.filterCutoff, now, 0.05);
+  });
+}
+
+['vib', 'trem', 'depth', 'filter'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateParams);
+});
+
+// Включение звука при нажатии
 function playNote(index) {
   if (!ctx) return;
+  
+  // Если эта нота уже играет (например, палец скользнул), глушим старую
+  if (activeNotes[index]) {
+    releaseNote(index);
+  }
+
   const now = ctx.currentTime;
   const freq = NOTES[index];
 
-  // 1. Основной генератор (пила для жужжания)
+  // 1. Основной генератор (пила)
   const osc = ctx.createOscillator();
   osc.type = 'sawtooth';
   osc.frequency.setValueAtTime(freq, now);
 
-  // 2. Вибрато (дрожание высоты тона)
+  // 2. Вибрато
   const lfo = ctx.createOscillator();
   lfo.type = 'sine';
-  lfo.frequency.setValueAtTime(12, now); // 12 Гц
+  lfo.frequency.setValueAtTime(params.vibRate, now);
   const lfoGain = ctx.createGain();
-  lfoGain.gain.setValueAtTime(20, now); // Отклонение на 20 Гц
+  lfoGain.gain.setValueAtTime(20, now); // Амплитуда вибрато 20 Гц
   lfo.connect(lfoGain);
   lfoGain.connect(osc.frequency);
 
-  // 3. Тремоло (быстрое изменение громкости - эффект "бзззз")
-  const tremolo = ctx.createOscillator();
-  tremolo.type = 'sine';
-  tremolo.frequency.setValueAtTime(30, now); // 30 Гц
-  const tremoloGain = ctx.createGain();
-  tremoloGain.gain.setValueAtTime(0.4, now);
+  // 3. Тремоло (Жужжание)
+  const tremoloNode = ctx.createGain();
+  tremoloNode.gain.value = 0.5; // Базовая громкость
   
-  const buzzGain = ctx.createGain();
-  buzzGain.gain.setValueAtTime(0.6, now); // Базовая громкость
+  const tremoloLfo = ctx.createOscillator();
+  tremoloLfo.type = 'sine';
+  tremoloLfo.frequency.setValueAtTime(params.tremRate, now);
   
-  tremolo.connect(tremoloGain);
-  tremoloGain.connect(buzzGain.gain);
+  const tremoloDepthGain = ctx.createGain();
+  tremoloDepthGain.gain.setValueAtTime(params.tremDepth, now);
+  
+  tremoloLfo.connect(tremoloDepthGain);
+  tremoloDepthGain.connect(tremoloNode.gain); // Модулируем громкость
 
-  // 4. Фильтр (убирает лишний резкий писк)
+  // 4. Фильтр
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2500, now);
-  filter.Q.value = 2;
+  filter.frequency.setValueAtTime(params.filterCutoff, now);
+  filter.Q.value = 1.5;
 
-  // 5. Огибающая (плавное затухание)
+  // 5. Огибающая (плавное появление и затухание)
   const envelope = ctx.createGain();
   envelope.gain.setValueAtTime(0, now);
-  envelope.gain.linearRampToValueAtTime(1, now + 0.05);
-  envelope.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+  envelope.gain.linearRampToValueAtTime(1, now + 0.05); // Атака
 
-  // Сборка
+  // Сборка графа
   osc.connect(filter);
-  filter.connect(envelope);
-  envelope.connect(buzzGain);
-  buzzGain.connect(master);
+  filter.connect(tremoloNode);
+  tremoloNode.connect(envelope);
+  envelope.connect(master);
 
   // Запуск
   osc.start(now);
   lfo.start(now);
-  tremolo.start(now);
+  tremoloLfo.start(now);
 
-  // Остановка
-  osc.stop(now + 0.9);
-  lfo.stop(now + 0.9);
-  tremolo.stop(now + 0.9);
+  // Сохраняем в активные, чтобы можно было отпустить или покрутить ручки
+  activeNotes[index] = {
+    osc, lfo, tremoloLfo, tremoloDepthGain, filter, envelope
+  };
 }
 
-// Функция для уменьшения картинок
+// Выключение звука (когда отпустили палец)
+function releaseNote(index) {
+  if (!activeNotes[index]) return;
+  const note = activeNotes[index];
+  const now = ctx.currentTime;
+
+  // Плавно гасим громкость
+  note.envelope.gain.cancelScheduledValues(now);
+  note.envelope.gain.setValueAtTime(note.envelope.gain.value, now);
+  note.envelope.gain.linearRampToValueAtTime(0, now + 0.2);
+
+  // Останавливаем генераторы чуть позже
+  note.osc.stop(now + 0.25);
+  note.lfo.stop(now + 0.25);
+  note.tremoloLfo.stop(now + 0.25);
+
+  delete activeNotes[index];
+}
+
+// Отрисовка клавиатуры
+const keyboardEl = document.getElementById('keyboard');
+const imgEl = document.getElementById('animal-img');
+const placeholderEl = document.getElementById('placeholder');
+
+function renderKeyboard() {
+  keyboardEl.innerHTML = '';
+  for (let i = 0; i < NUM_KEYS; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'key';
+    btn.type = 'button';
+    btn.dataset.index = i;
+    btn.textContent = NOTE_NAMES[i];
+
+    if (!images[i]) btn.classList.add('empty-key');
+
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      btn.setPointerCapture(e.pointerId); // Захватываем палец, чтобы работать при скольжении
+      playNote(i);
+      btn.classList.add('active');
+      showImage(i);
+    });
+
+    const release = () => {
+      releaseNote(i);
+      btn.classList.remove('active');
+    };
+
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('lostpointercapture', release);
+
+    keyboardEl.appendChild(btn);
+  }
+}
+
+// Показ картинки
+function showImage(index) {
+  const imgData = images[index];
+  if (imgData) {
+    imgEl.src = imgData;
+    imgEl.style.display = 'block';
+    placeholderEl.style.display = 'none';
+    
+    imgEl.classList.remove('animate-pop');
+    void imgEl.offsetWidth;
+    imgEl.classList.add('animate-pop');
+  } else {
+    imgEl.style.display = 'none';
+    placeholderEl.style.display = 'block';
+    placeholderEl.innerHTML = `Поза для ноты <b>${NOTE_NAMES[index]}</b><br>ещё не загружена`;
+  }
+}
+
+// Сжатие картинок
 function resizeImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -264,54 +427,6 @@ function resizeImage(file) {
     };
     reader.readAsDataURL(file);
   });
-}
-
-const keyboardEl = document.getElementById('keyboard');
-const imgEl = document.getElementById('animal-img');
-const placeholderEl = document.getElementById('placeholder');
-
-function renderKeyboard() {
-  keyboardEl.innerHTML = '';
-  for (let i = 0; i < NUM_KEYS; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'key';
-    btn.type = 'button';
-    btn.dataset.index = i;
-    btn.textContent = NOTE_NAMES[i];
-
-    if (!images[i]) btn.classList.add('empty-key');
-
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      playNote(i);
-      btn.classList.add('active');
-      showImage(i);
-    });
-
-    const release = () => btn.classList.remove('active');
-    btn.addEventListener('pointerup', release);
-    btn.addEventListener('pointercancel', release);
-    btn.addEventListener('pointerleave', release);
-
-    keyboardEl.appendChild(btn);
-  }
-}
-
-function showImage(index) {
-  const imgData = images[index];
-  if (imgData) {
-    imgEl.src = imgData;
-    imgEl.style.display = 'block';
-    placeholderEl.style.display = 'none';
-    
-    imgEl.classList.remove('animate-pop');
-    void imgEl.offsetWidth;
-    imgEl.classList.add('animate-pop');
-  } else {
-    imgEl.style.display = 'none';
-    placeholderEl.style.display = 'block';
-    placeholderEl.innerHTML = `Поза для ноты <b>${NOTE_NAMES[index]}</b><br>ещё не загружена`;
-  }
 }
 
 const fileInput = document.getElementById('fileInput');
@@ -362,6 +477,7 @@ function init() {
     }
   }
   renderKeyboard();
+  updateParams(); // Инициализация текста на крутилках
 }
 
 init();
