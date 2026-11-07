@@ -6,13 +6,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Пчела и Пианино</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: #1a1a24;
-    color: #fff;
+    background: #f2f2f7;
+    color: #333;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     height: 100dvh;
     display: flex;
@@ -28,68 +28,73 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    padding: 10px 12px;
   }
   h1 {
     font-size: 16px;
     margin: 0;
     flex: 1;
-    font-weight: 600;
+    font-weight: 700;
+    color: #111;
   }
   .btn {
     appearance: none;
     border: 0;
     border-radius: 999px;
     padding: 8px 12px;
-    background: #333344;
-    color: #fff;
+    background: #e5e5ea;
+    color: #333;
     font: inherit;
     font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
+    transition: background 0.1s;
   }
-  .btn:active { background: #444455; }
+  .btn:active { background: #d1d1d6; }
   
-  /* Панель управления (крутилки) */
+  /* Панель управления (крутилки) - без тени */
   #controls {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px 16px;
-    padding: 10px 15px;
-    background: #222230;
-    margin: 0 10px 5px;
-    border-radius: 15px;
-    border: 1px solid #333344;
+    gap: 12px 20px;
+    padding: 15px;
+    background: #ffffff;
+    margin: 0 12px 10px;
+    border-radius: 16px;
+    border: 1px solid #e5e5ea; /* Тонкая рамка вместо тени */
   }
   .control-item {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
   .control-item label {
-    font-size: 11px;
-    color: #aaa;
+    font-size: 12px;
+    color: #666;
     display: flex;
     justify-content: space-between;
+    font-weight: 500;
   }
   .control-item input[type=range] {
     width: 100%;
-    accent-color: #f1c40f; /* Пчелиный цвет */
-    height: 20px;
+    accent-color: #f1c40f;
+    height: 24px;
   }
 
-  /* Область с картинкой */
+  /* Область с картинкой - чисто белый фон, без тени */
   #display-area {
     flex: 1;
     min-height: 0;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 10px;
-    background: #222230;
+    padding: 15px;
+    background: #ffffff; /* Чисто белый */
     border-radius: 20px;
-    margin: 0 10px;
+    margin: 0 12px;
     overflow: hidden;
     position: relative;
+    border: 1px solid #e5e5ea; /* Тонкая рамка вместо тени */
   }
   #animal-img {
     max-width: 100%;
@@ -101,46 +106,49 @@
   #placeholder {
     font-size: 16px;
     text-align: center;
-    opacity: 0.5;
+    color: #aaa;
   }
 
-  /* Клавиатура */
+  /* Клавиатура - без внешних теней */
   #keyboard {
     display: flex;
     height: 140px;
-    padding: 10px;
-    gap: 3px;
+    padding: 12px;
+    gap: 4px;
   }
   .key {
     flex: 1;
-    background: #fff;
-    border-radius: 0 0 10px 10px;
+    background: #ffffff;
+    border-radius: 0 0 12px 12px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
     padding-bottom: 15px;
-    font-weight: bold;
+    font-weight: 700;
     font-size: 13px;
     color: #333;
-    box-shadow: inset 0 -6px 0 #ccc, 0 4px 6px rgba(0,0,0,0.3);
+    /* Оставили только внутреннюю тень для объема, убрали внешнюю */
+    box-shadow: inset 0 -6px 0 #e5e5ea; 
     transition: all 0.05s;
     cursor: pointer;
-    border: none;
+    border: 1px solid #e5e5ea;
+    border-top: none;
     touch-action: none;
   }
   .key.active {
-    background: #f1c40f; /* Желтый при нажатии */
+    background: #f1c40f;
     box-shadow: inset 0 -2px 0 #d4ac0d;
     transform: translateY(4px);
+    color: #000;
   }
   .key.empty-key {
-    background: #333;
-    color: #888;
-    box-shadow: inset 0 -6px 0 #111, 0 4px 6px rgba(0,0,0,0.3);
+    background: #f8f8f8;
+    color: #ccc;
+    box-shadow: inset 0 -6px 0 #e5e5ea;
   }
   @keyframes pop {
     0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+    50% { transform: scale(1.03); }
     100% { transform: scale(1); }
   }
   .animate-pop {
@@ -158,7 +166,6 @@
     <button id="clearBtn" class="btn" type="button">Сброс</button>
   </header>
 
-  <!-- Крутилки -->
   <div id="controls">
     <div class="control-item">
       <label>Вибрато <span id="val-vib">12</span> Гц</label>
@@ -195,9 +202,8 @@ const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си', 
 let ctx = null;
 let master = null;
 let images = new Array(NUM_KEYS).fill(null);
-let activeNotes = {}; // Здесь храним играющие сейчас ноты
+let activeNotes = {}; 
 
-// Значения крутилок
 const params = {
   vibRate: 12,
   tremRate: 30,
@@ -205,7 +211,6 @@ const params = {
   filterCutoff: 2000
 };
 
-// Разблокировка звука для iOS
 document.addEventListener('touchstart', function unlockAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -230,7 +235,6 @@ document.addEventListener('touchstart', function unlockAudio() {
   document.removeEventListener('touchstart', unlockAudio);
 }, { once: true });
 
-// Обработка крутилок
 function updateParams() {
   params.vibRate = +document.getElementById('vib').value;
   params.tremRate = +document.getElementById('trem').value;
@@ -242,7 +246,6 @@ function updateParams() {
   document.getElementById('val-depth').textContent = params.tremDepth.toFixed(1);
   document.getElementById('val-filter').textContent = params.filterCutoff;
 
-  // Обновляем звук "на лету", если сейчас что-то играет
   const now = ctx ? ctx.currentTime : 0;
   Object.values(activeNotes).forEach(note => {
     note.lfo.frequency.setTargetAtTime(params.vibRate, now, 0.05);
@@ -256,11 +259,9 @@ function updateParams() {
   document.getElementById(id).addEventListener('input', updateParams);
 });
 
-// Включение звука при нажатии
 function playNote(index) {
   if (!ctx) return;
   
-  // Если эта нота уже играет (например, палец скользнул), глушим старую
   if (activeNotes[index]) {
     releaseNote(index);
   }
@@ -268,23 +269,20 @@ function playNote(index) {
   const now = ctx.currentTime;
   const freq = NOTES[index];
 
-  // 1. Основной генератор (пила)
   const osc = ctx.createOscillator();
   osc.type = 'sawtooth';
   osc.frequency.setValueAtTime(freq, now);
 
-  // 2. Вибрато
   const lfo = ctx.createOscillator();
   lfo.type = 'sine';
   lfo.frequency.setValueAtTime(params.vibRate, now);
   const lfoGain = ctx.createGain();
-  lfoGain.gain.setValueAtTime(20, now); // Амплитуда вибрато 20 Гц
+  lfoGain.gain.setValueAtTime(20, now); 
   lfo.connect(lfoGain);
   lfoGain.connect(osc.frequency);
 
-  // 3. Тремоло (Жужжание)
   const tremoloNode = ctx.createGain();
-  tremoloNode.gain.value = 0.5; // Базовая громкость
+  tremoloNode.gain.value = 0.5; 
   
   const tremoloLfo = ctx.createOscillator();
   tremoloLfo.type = 'sine';
@@ -294,48 +292,40 @@ function playNote(index) {
   tremoloDepthGain.gain.setValueAtTime(params.tremDepth, now);
   
   tremoloLfo.connect(tremoloDepthGain);
-  tremoloDepthGain.connect(tremoloNode.gain); // Модулируем громкость
+  tremoloDepthGain.connect(tremoloNode.gain); 
 
-  // 4. Фильтр
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(params.filterCutoff, now);
   filter.Q.value = 1.5;
 
-  // 5. Огибающая (плавное появление и затухание)
   const envelope = ctx.createGain();
   envelope.gain.setValueAtTime(0, now);
-  envelope.gain.linearRampToValueAtTime(1, now + 0.05); // Атака
+  envelope.gain.linearRampToValueAtTime(1, now + 0.05); 
 
-  // Сборка графа
   osc.connect(filter);
   filter.connect(tremoloNode);
   tremoloNode.connect(envelope);
   envelope.connect(master);
 
-  // Запуск
   osc.start(now);
   lfo.start(now);
   tremoloLfo.start(now);
 
-  // Сохраняем в активные, чтобы можно было отпустить или покрутить ручки
   activeNotes[index] = {
     osc, lfo, tremoloLfo, tremoloDepthGain, filter, envelope
   };
 }
 
-// Выключение звука (когда отпустили палец)
 function releaseNote(index) {
   if (!activeNotes[index]) return;
   const note = activeNotes[index];
   const now = ctx.currentTime;
 
-  // Плавно гасим громкость
   note.envelope.gain.cancelScheduledValues(now);
   note.envelope.gain.setValueAtTime(note.envelope.gain.value, now);
   note.envelope.gain.linearRampToValueAtTime(0, now + 0.2);
 
-  // Останавливаем генераторы чуть позже
   note.osc.stop(now + 0.25);
   note.lfo.stop(now + 0.25);
   note.tremoloLfo.stop(now + 0.25);
@@ -343,7 +333,6 @@ function releaseNote(index) {
   delete activeNotes[index];
 }
 
-// Отрисовка клавиатуры
 const keyboardEl = document.getElementById('keyboard');
 const imgEl = document.getElementById('animal-img');
 const placeholderEl = document.getElementById('placeholder');
@@ -361,7 +350,7 @@ function renderKeyboard() {
 
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      btn.setPointerCapture(e.pointerId); // Захватываем палец, чтобы работать при скольжении
+      btn.setPointerCapture(e.pointerId); 
       playNote(i);
       btn.classList.add('active');
       showImage(i);
@@ -380,7 +369,6 @@ function renderKeyboard() {
   }
 }
 
-// Показ картинки
 function showImage(index) {
   const imgData = images[index];
   if (imgData) {
@@ -398,7 +386,6 @@ function showImage(index) {
   }
 }
 
-// Сжатие картинок
 function resizeImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -477,7 +464,7 @@ function init() {
     }
   }
   renderKeyboard();
-  updateParams(); // Инициализация текста на крутилках
+  updateParams(); 
 }
 
 init();
