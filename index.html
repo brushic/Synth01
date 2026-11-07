@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Рисунковый синтезатор</title>
+<title>Животное и Пианино</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: #101014;
+    background: #1a1a24;
     color: #fff;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     height: 100dvh;
@@ -28,226 +28,324 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px 4px;
+    padding: 8px 10px;
   }
   h1 {
-    font-size: 14px;
+    font-size: 16px;
     margin: 0;
     flex: 1;
-    opacity: .75;
     font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .btn {
     appearance: none;
     border: 0;
     border-radius: 999px;
     padding: 8px 12px;
-    background: #2a2a33;
+    background: #333344;
     color: #fff;
     font: inherit;
     font-size: 13px;
     cursor: pointer;
   }
-  .btn:active { background: #3a3a47; }
-  #pads {
+  .btn:active { background: #444455; }
+  
+  /* Область с картинкой */
+  #display-area {
     flex: 1;
     min-height: 0;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(4, 1fr);
-    gap: 8px;
-    padding: 8px;
-  }
-  .pad {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background: #222230;
+    border-radius: 20px;
+    margin: 0 10px;
+    overflow: hidden;
     position: relative;
-    border: 0;
-    border-radius: 22px;
-    background-color: hsl(var(--hue) 75% 62%);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    box-shadow:
-      inset 0 -6px rgba(0,0,0,.16),
-      0 4px 10px rgba(0,0,0,.28);
-    transition: transform .06s ease, filter .06s ease;
-    touch-action: none;
-    padding: 0;
   }
-  .pad:active,
-  .pad.active {
-    transform: scale(.96);
-    filter: brightness(1.18);
+  #animal-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: none; /* Пока нет картинки - скрыто */
+    transition: transform 0.1s ease;
   }
-  .pad.empty::after {
-    content: "+";
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    font-size: 42px;
-    font-weight: 300;
-    color: rgba(255,255,255,.8);
+  #placeholder {
+    font-size: 18px;
+    text-align: center;
+    opacity: 0.5;
   }
-  @media (orientation: landscape) {
-    #pads {
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(3, 1fr);
-    }
+
+  /* Клавиатура */
+  #keyboard {
+    display: flex;
+    height: 160px;
+    padding: 10px;
+    gap: 4px;
+  }
+  .key {
+    flex: 1;
+    background: #fff;
+    border-radius: 0 0 10px 10px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 15px;
+    font-weight: bold;
+    font-size: 16px;
+    color: #333;
+    box-shadow: inset 0 -6px 0 #ccc, 0 4px 6px rgba(0,0,0,0.3);
+    transition: all 0.05s;
+    cursor: pointer;
+    border: none;
+  }
+  .key.active {
+    background: #e0e0e0;
+    box-shadow: inset 0 -2px 0 #bbb;
+    transform: translateY(4px);
+  }
+  .key.empty-key {
+    background: #333;
+    color: #888;
+    box-shadow: inset 0 -6px 0 #111, 0 4px 6px rgba(0,0,0,0.3);
+  }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  .animate-pop {
+    animation: pop 0.2s ease;
   }
 </style>
 </head>
 <body>
   <header>
-    <h1>Рисунковый синтезатор</h1>
+    <h1>Нажми на клавишу!</h1>
     <label class="btn">
-      Добавить
+      Загрузить 7 рисунков
       <input id="fileInput" type="file" accept="image/*" multiple hidden>
     </label>
     <button id="clearBtn" class="btn" type="button">Сброс</button>
   </header>
 
-  <div id="pads"></div>
+  <div id="display-area">
+    <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 7 рисунков</div>
+    <img id="animal-img" alt="Животное">
+  </div>
+
+  <div id="keyboard">
+    <!-- Клавиши будут созданы в JS -->
+  </div>
 
 <script>
-const PAD_COUNT = 12;
-const padsEl = document.getElementById('pads');
-const fileInput = document.getElementById('fileInput');
-const clearBtn = document.getElementById('clearBtn');
+const NUM_KEYS = 7;
+// Ноты: До, Ре, Ми, Фа, Соль, Ля, Си (C4 - B4)
+const NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88];
+const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си'];
 
-const scale = [0, 2, 4, 7, 9];
 let ctx = null;
 let master = null;
-let objectUrls = [];
+let images = new Array(NUM_KEYS).fill(null); // Массив для хранения base64 картинок
 
 // Хитрость для iOS: разблокируем звук при первом касании экрана
 document.addEventListener('touchstart', function unlockAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     ctx = new AudioCtx();
-
     master = ctx.createGain();
-    master.gain.value = 0.5; // Сделал звук заметно громче (было 0.16)
-
+    master.gain.value = 0.5;
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -18;
     compressor.knee.value = 20;
     compressor.ratio.value = 6;
     compressor.attack.value = 0.003;
     compressor.release.value = 0.25;
-
     master.connect(compressor).connect(ctx.destination);
   }
-
-  if (ctx.state === 'suspended') {
-    ctx.resume();
-  }
-
-  // Создаем беззвучный буфер, чтобы окончательно "разбудить" динамик
+  if (ctx.state === 'suspended') ctx.resume();
+  
   const buffer = ctx.createBuffer(1, 1, 22050);
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   source.connect(ctx.destination);
   source.start(0);
-
   document.removeEventListener('touchstart', unlockAudio);
 }, { once: true });
 
-
 function playNote(index) {
-  if (!ctx) return; // Если звук еще не разблокирован
-
+  if (!ctx) return;
   const now = ctx.currentTime;
-  const semitone = scale[index % scale.length] + 12 * Math.floor(index / scale.length);
-  const freq = 261.63 * Math.pow(2, semitone / 12);
-
+  const freq = NOTES[index];
+  
   const osc1 = ctx.createOscillator();
   osc1.type = 'sine';
   osc1.frequency.setValueAtTime(freq, now);
-
+  
   const osc2 = ctx.createOscillator();
   osc2.type = 'triangle';
-  osc2.frequency.setValueAtTime(freq * 2, now);
+  osc2.frequency.setValueAtTime(freq * 2, now); // Октава выше для яркости
 
   const gain1 = ctx.createGain();
   const gain2 = ctx.createGain();
 
   gain1.gain.setValueAtTime(0, now);
   gain1.gain.linearRampToValueAtTime(0.9, now + 0.01);
-  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
 
   gain2.gain.setValueAtTime(0, now);
-  gain2.gain.linearRampToValueAtTime(0.15, now + 0.01);
-  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  gain2.gain.linearRampToValueAtTime(0.2, now + 0.01);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
 
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(1800, now);
-  filter.Q.value = 0.7;
 
   osc1.connect(gain1).connect(filter);
   osc2.connect(gain2).connect(filter);
   filter.connect(master);
 
-  osc1.start(now);
-  osc2.start(now);
-  osc1.stop(now + 0.8);
-  osc2.stop(now + 0.8);
+  osc1.start(now); osc2.start(now);
+  osc1.stop(now + 0.9); osc2.stop(now + 0.9);
 }
 
-function createPads() {
-  for (let i = 0; i < PAD_COUNT; i++) {
-    const pad = document.createElement('button');
-    pad.type = 'button';
-    pad.className = 'pad empty';
-    pad.dataset.index = i;
-    pad.style.setProperty('--hue', (i * 37) % 360);
+// Функция для уменьшения картинок перед сохранением (чтобы не переполнить память)
+function resizeImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 800; // Максимальный размер стороны
+        let width = img.width;
+        let height = img.height;
 
-    pad.addEventListener('pointerdown', (e) => {
+        if (width > height && width > MAX_SIZE) {
+          height = Math.round(height * MAX_SIZE / width);
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width = Math.round(width * MAX_SIZE / height);
+          height = MAX_SIZE;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8)); // Сжимаем в JPEG
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Отрисовка интерфейса
+const keyboardEl = document.getElementById('keyboard');
+const imgEl = document.getElementById('animal-img');
+const placeholderEl = document.getElementById('placeholder');
+
+function renderKeyboard() {
+  keyboardEl.innerHTML = '';
+  for (let i = 0; i < NUM_KEYS; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'key';
+    btn.type = 'button';
+    btn.dataset.index = i;
+    btn.textContent = NOTE_NAMES[i];
+
+    if (!images[i]) btn.classList.add('empty-key');
+
+    btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       playNote(i);
-      pad.classList.add('active');
+      btn.classList.add('active');
+      showImage(i);
     });
 
-    const release = () => pad.classList.remove('active');
-    pad.addEventListener('pointerup', release);
-    pad.addEventListener('pointercancel', release);
-    pad.addEventListener('pointerleave', release);
+    const release = () => btn.classList.remove('active');
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('pointerleave', release);
 
-    padsEl.appendChild(pad);
+    keyboardEl.appendChild(btn);
   }
 }
 
-fileInput.addEventListener('change', () => {
-  const files = [...fileInput.files].slice(0, PAD_COUNT);
-  const pads = [...padsEl.children];
+function showImage(index) {
+  const imgData = images[index];
+  if (imgData) {
+    imgEl.src = imgData;
+    imgEl.style.display = 'block';
+    placeholderEl.style.display = 'none';
+    
+    // Анимация покачивания
+    imgEl.classList.remove('animate-pop');
+    void imgEl.offsetWidth; // Трюк для перезапуска анимации
+    imgEl.classList.add('animate-pop');
+  } else {
+    imgEl.style.display = 'none';
+    placeholderEl.style.display = 'block';
+    placeholderEl.innerHTML = `Поза для ноты <b>${NOTE_NAMES[index]}</b><br>ещё не загружена`;
+  }
+}
 
-  objectUrls.forEach((url) => URL.revokeObjectURL(url));
-  objectUrls = [];
+// Загрузка файлов
+const fileInput = document.getElementById('fileInput');
 
-  files.forEach((file, i) => {
-    const url = URL.createObjectURL(file);
-    objectUrls.push(url);
-    pads[i].style.backgroundImage = `url("${url}")`;
-    pads[i].classList.remove('empty');
-  });
+fileInput.addEventListener('change', async () => {
+  const files = [...fileInput.files].slice(0, NUM_KEYS);
+  if (files.length === 0) return;
 
+  // Меняем текст на кнопке, пока идет обработка
+  const btnLabel = fileInput.closest('label');
+  const oldText = btnLabel.childNodes[0].nodeValue;
+  btnLabel.childNodes[0].nodeValue = 'Грузим... ';
+
+  for (let i = 0; i < files.length; i++) {
+    const base64 = await resizeImage(files[i]);
+    images[i] = base64;
+  }
+
+  // Сохраняем в память телефона
+  try {
+    localStorage.setItem('animalSynthImages', JSON.stringify(images));
+  } catch (e) {
+    alert('Ошибка: не хватает памяти для сохранения картинок.');
+  }
+
+  btnLabel.childNodes[0].nodeValue = oldText;
   fileInput.value = '';
+  renderKeyboard();
+  showImage(0); // Показываем первую картинку
 });
 
-clearBtn.addEventListener('click', () => {
-  objectUrls.forEach((url) => URL.revokeObjectURL(url));
-  objectUrls = [];
-
-  [...padsEl.children].forEach((pad) => {
-    pad.style.backgroundImage = '';
-    pad.classList.add('empty');
-  });
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (confirm('Удалить все рисунки?')) {
+    images = new Array(NUM_KEYS).fill(null);
+    localStorage.removeItem('animalSynthImages');
+    imgEl.style.display = 'none';
+    placeholderEl.style.display = 'block';
+    placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 7 рисунков';
+    renderKeyboard();
+  }
 });
 
-createPads();
+// Инициализация при запуске
+function init() {
+  // Пытаемся загрузить сохраненные картинки
+  const saved = localStorage.getItem('animalSynthImages');
+  if (saved) {
+    try {
+      images = JSON.parse(saved);
+    } catch (e) {
+      console.error('Ошибка чтения картинок');
+    }
+  }
+  renderKeyboard();
+}
+
+init();
 </script>
 </body>
 </html>
