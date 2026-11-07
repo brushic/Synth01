@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Животное и Пианино</title>
+<title>Пчела и Пианино</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -67,7 +67,7 @@
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    display: none; /* Пока нет картинки - скрыто */
+    display: none;
     transition: transform 0.1s ease;
   }
   #placeholder {
@@ -81,7 +81,7 @@
     display: flex;
     height: 160px;
     padding: 10px;
-    gap: 4px;
+    gap: 3px;
   }
   .key {
     flex: 1;
@@ -92,7 +92,7 @@
     justify-content: center;
     padding-bottom: 15px;
     font-weight: bold;
-    font-size: 16px;
+    font-size: 13px;
     color: #333;
     box-shadow: inset 0 -6px 0 #ccc, 0 4px 6px rgba(0,0,0,0.3);
     transition: all 0.05s;
@@ -121,16 +121,16 @@
 </head>
 <body>
   <header>
-    <h1>Нажми на клавишу!</h1>
+    <h1>Пчела жужжит!</h1>
     <label class="btn">
-      Загрузить 7 рисунков
+      Загрузить 8 рисунков
       <input id="fileInput" type="file" accept="image/*" multiple hidden>
     </label>
     <button id="clearBtn" class="btn" type="button">Сброс</button>
   </header>
 
   <div id="display-area">
-    <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 7 рисунков</div>
+    <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 8 рисунков</div>
     <img id="animal-img" alt="Животное">
   </div>
 
@@ -139,14 +139,14 @@
   </div>
 
 <script>
-const NUM_KEYS = 7;
-// Ноты: До, Ре, Ми, Фа, Соль, Ля, Си (C4 - B4)
-const NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88];
-const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си'];
+const NUM_KEYS = 8;
+// Ноты: До, Ре, Ми, Фа, Соль, Ля, Си, До (следующей октавы)
+const NOTES = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си', 'До²'];
 
 let ctx = null;
 let master = null;
-let images = new Array(NUM_KEYS).fill(null); // Массив для хранения base64 картинок
+let images = new Array(NUM_KEYS).fill(null);
 
 // Хитрость для iOS: разблокируем звук при первом касании экрана
 document.addEventListener('touchstart', function unlockAudio() {
@@ -173,43 +173,69 @@ document.addEventListener('touchstart', function unlockAudio() {
   document.removeEventListener('touchstart', unlockAudio);
 }, { once: true });
 
+// НОВАЯ ФУНКЦИЯ ЗВУКА ПЧЕЛЫ
 function playNote(index) {
   if (!ctx) return;
   const now = ctx.currentTime;
   const freq = NOTES[index];
+
+  // 1. Основной генератор (пила для жужжания)
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq, now);
+
+  // 2. Вибрато (дрожание высоты тона)
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.setValueAtTime(12, now); // 12 Гц
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.setValueAtTime(20, now); // Отклонение на 20 Гц
+  lfo.connect(lfoGain);
+  lfoGain.connect(osc.frequency);
+
+  // 3. Тремоло (быстрое изменение громкости - эффект "бзззз")
+  const tremolo = ctx.createOscillator();
+  tremolo.type = 'sine';
+  tremolo.frequency.setValueAtTime(30, now); // 30 Гц
+  const tremoloGain = ctx.createGain();
+  tremoloGain.gain.setValueAtTime(0.4, now);
   
-  const osc1 = ctx.createOscillator();
-  osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(freq, now);
+  const buzzGain = ctx.createGain();
+  buzzGain.gain.setValueAtTime(0.6, now); // Базовая громкость
   
-  const osc2 = ctx.createOscillator();
-  osc2.type = 'triangle';
-  osc2.frequency.setValueAtTime(freq * 2, now); // Октава выше для яркости
+  tremolo.connect(tremoloGain);
+  tremoloGain.connect(buzzGain.gain);
 
-  const gain1 = ctx.createGain();
-  const gain2 = ctx.createGain();
-
-  gain1.gain.setValueAtTime(0, now);
-  gain1.gain.linearRampToValueAtTime(0.9, now + 0.01);
-  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-
-  gain2.gain.setValueAtTime(0, now);
-  gain2.gain.linearRampToValueAtTime(0.2, now + 0.01);
-  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-
+  // 4. Фильтр (убирает лишний резкий писк)
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(1800, now);
+  filter.frequency.setValueAtTime(2500, now);
+  filter.Q.value = 2;
 
-  osc1.connect(gain1).connect(filter);
-  osc2.connect(gain2).connect(filter);
-  filter.connect(master);
+  // 5. Огибающая (плавное затухание)
+  const envelope = ctx.createGain();
+  envelope.gain.setValueAtTime(0, now);
+  envelope.gain.linearRampToValueAtTime(1, now + 0.05);
+  envelope.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
 
-  osc1.start(now); osc2.start(now);
-  osc1.stop(now + 0.9); osc2.stop(now + 0.9);
+  // Сборка
+  osc.connect(filter);
+  filter.connect(envelope);
+  envelope.connect(buzzGain);
+  buzzGain.connect(master);
+
+  // Запуск
+  osc.start(now);
+  lfo.start(now);
+  tremolo.start(now);
+
+  // Остановка
+  osc.stop(now + 0.9);
+  lfo.stop(now + 0.9);
+  tremolo.stop(now + 0.9);
 }
 
-// Функция для уменьшения картинок перед сохранением (чтобы не переполнить память)
+// Функция для уменьшения картинок
 function resizeImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -217,7 +243,7 @@ function resizeImage(file) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_SIZE = 800; // Максимальный размер стороны
+        const MAX_SIZE = 800; 
         let width = img.width;
         let height = img.height;
 
@@ -232,7 +258,7 @@ function resizeImage(file) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8)); // Сжимаем в JPEG
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
       img.src = e.target.result;
     };
@@ -240,7 +266,6 @@ function resizeImage(file) {
   });
 }
 
-// Отрисовка интерфейса
 const keyboardEl = document.getElementById('keyboard');
 const imgEl = document.getElementById('animal-img');
 const placeholderEl = document.getElementById('placeholder');
@@ -279,9 +304,8 @@ function showImage(index) {
     imgEl.style.display = 'block';
     placeholderEl.style.display = 'none';
     
-    // Анимация покачивания
     imgEl.classList.remove('animate-pop');
-    void imgEl.offsetWidth; // Трюк для перезапуска анимации
+    void imgEl.offsetWidth;
     imgEl.classList.add('animate-pop');
   } else {
     imgEl.style.display = 'none';
@@ -290,14 +314,12 @@ function showImage(index) {
   }
 }
 
-// Загрузка файлов
 const fileInput = document.getElementById('fileInput');
 
 fileInput.addEventListener('change', async () => {
   const files = [...fileInput.files].slice(0, NUM_KEYS);
   if (files.length === 0) return;
 
-  // Меняем текст на кнопке, пока идет обработка
   const btnLabel = fileInput.closest('label');
   const oldText = btnLabel.childNodes[0].nodeValue;
   btnLabel.childNodes[0].nodeValue = 'Грузим... ';
@@ -307,9 +329,8 @@ fileInput.addEventListener('change', async () => {
     images[i] = base64;
   }
 
-  // Сохраняем в память телефона
   try {
-    localStorage.setItem('animalSynthImages', JSON.stringify(images));
+    localStorage.setItem('animalSynthImagesV2', JSON.stringify(images));
   } catch (e) {
     alert('Ошибка: не хватает памяти для сохранения картинок.');
   }
@@ -317,24 +338,22 @@ fileInput.addEventListener('change', async () => {
   btnLabel.childNodes[0].nodeValue = oldText;
   fileInput.value = '';
   renderKeyboard();
-  showImage(0); // Показываем первую картинку
+  showImage(0);
 });
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (confirm('Удалить все рисунки?')) {
     images = new Array(NUM_KEYS).fill(null);
-    localStorage.removeItem('animalSynthImages');
+    localStorage.removeItem('animalSynthImagesV2');
     imgEl.style.display = 'none';
     placeholderEl.style.display = 'block';
-    placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 7 рисунков';
+    placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 8 рисунков';
     renderKeyboard();
   }
 });
 
-// Инициализация при запуске
 function init() {
-  // Пытаемся загрузить сохраненные картинки
-  const saved = localStorage.getItem('animalSynthImages');
+  const saved = localStorage.getItem('animalSynthImagesV2');
   if (saved) {
     try {
       images = JSON.parse(saved);
