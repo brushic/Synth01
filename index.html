@@ -207,7 +207,7 @@ const params = {
   filterCutoff: 2000
 };
 
-// 🔥 НАДЕЖНАЯ ФУНКЦИЯ ЗАПУСКА ЗВУКА
+// ЖЕЛЕЗОБЕТОННАЯ ФУНКЦИЯ ЗАПУСКА ЗВУКА ДЛЯ IPHONE
 function initAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -225,15 +225,21 @@ function initAudio() {
     master.connect(compressor).connect(ctx.destination);
   }
   
-  // Если iOS поставил звук на паузу (например, когда свернули браузер) - будим его
   if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
     ctx.resume();
   }
+  
+  // Хитрость для iOS: проигрываем беззвучный буфер для разблокировки
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
 }
 
 // Будим звук при любом касании экрана
 document.addEventListener('touchstart', initAudio, { passive: true });
-document.addEventListener('pointerdown', initAudio, { passive: true });
+document.addEventListener('mousedown', initAudio, { passive: true });
 
 function updateParams() {
   params.vibRate = +document.getElementById('vib').value;
@@ -248,10 +254,10 @@ function updateParams() {
 
   const now = ctx ? ctx.currentTime : 0;
   Object.values(activeNotes).forEach(note => {
-    note.lfo.frequency.setTargetAtTime(params.vibRate, now, 0.05);
-    note.tremoloLfo.frequency.setTargetAtTime(params.tremRate, now, 0.05);
-    note.tremoloDepthGain.gain.setTargetAtTime(params.tremDepth, now, 0.05);
-    note.filter.frequency.setTargetAtTime(params.filterCutoff, now, 0.05);
+    if(note.lfo) note.lfo.frequency.setTargetAtTime(params.vibRate, now, 0.05);
+    if(note.tremoloLfo) note.tremoloLfo.frequency.setTargetAtTime(params.tremRate, now, 0.05);
+    if(note.tremoloDepthGain) note.tremoloDepthGain.gain.setTargetAtTime(params.tremDepth, now, 0.05);
+    if(note.filter) note.filter.frequency.setTargetAtTime(params.filterCutoff, now, 0.05);
   });
 }
 
@@ -260,7 +266,7 @@ function updateParams() {
 });
 
 function playNote(index) {
-  initAudio(); // Принудительно проверяем звук перед каждой нотой!
+  initAudio(); // Принудительно будим звук перед каждой нотой
   if (!ctx) return;
   
   if (activeNotes[index]) {
@@ -349,25 +355,23 @@ function renderKeyboard() {
 
     if (!images[i]) btn.classList.add('empty-key');
 
+    // Нажатие
     btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      btn.setPointerCapture(e.pointerId); 
       playNote(i);
       btn.classList.add('active');
       showImage(i, true);
     });
 
+    // Отпускание (срабатывает в том числе если палец уехал в сторону)
     const release = () => {
       releaseNote(i);
       btn.classList.remove('active');
-      if (images[i]) {
-         showImage(i, false);
-      }
+      if (images[i]) showImage(i, false);
     };
 
     btn.addEventListener('pointerup', release);
     btn.addEventListener('pointercancel', release);
-    btn.addEventListener('lostpointercapture', release);
+    btn.addEventListener('pointerleave', release);
 
     keyboardEl.appendChild(btn);
   }
@@ -376,7 +380,8 @@ function renderKeyboard() {
 function showImage(index, isPressed) {
   const imgData = images[index];
   
-  if (imgData) {
+  // Защита от битых данных из памяти
+  if (imgData && typeof imgData === 'object' && imgData.static) {
     imgEl.style.display = 'block';
     placeholderEl.style.display = 'none';
     
@@ -462,9 +467,10 @@ fileInput.addEventListener('change', async () => {
   }
 
   try {
-    localStorage.setItem('animalSynthImagesV3', JSON.stringify(images));
+    // НОВЫЙ КЛЮЧ V4 - очищает старые ошибки
+    localStorage.setItem('animalSynthImagesV4', JSON.stringify(images));
   } catch (e) {
-    alert('Ошибка: не хватает памяти для сохранения. Попробуйте загрузить гифки поменьше.');
+    alert('Ошибка памяти: Гифки слишком большие для сохранения. В следующий раз попробуйте файлы поменьше.');
   }
 
   btnLabel.childNodes[0].nodeValue = oldText;
@@ -476,7 +482,7 @@ fileInput.addEventListener('change', async () => {
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (confirm('Удалить все рисунки?')) {
     images = new Array(NUM_KEYS).fill(null);
-    localStorage.removeItem('animalSynthImagesV3');
+    localStorage.removeItem('animalSynthImagesV4');
     imgEl.style.display = 'none';
     placeholderEl.style.display = 'block';
     placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 8 файлов';
@@ -485,7 +491,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 });
 
 function init() {
-  const saved = localStorage.getItem('animalSynthImagesV3');
+  const saved = localStorage.getItem('animalSynthImagesV4');
   if (saved) {
     try {
       images = JSON.parse(saved);
