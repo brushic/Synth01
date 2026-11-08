@@ -61,7 +61,7 @@
     background: #ffffff;
     margin: 0 12px 10px;
     border-radius: 16px;
-    border: 1px solid #e5e5ea; /* Тонкая рамка вместо тени */
+    border: 1px solid #e5e5ea;
   }
   .control-item {
     display: flex;
@@ -81,7 +81,7 @@
     height: 24px;
   }
 
-  /* Область с картинкой - чисто белый фон, без тени */
+  /* Область с картинкой */
   #display-area {
     flex: 1;
     min-height: 0;
@@ -89,12 +89,12 @@
     justify-content: center;
     align-items: center;
     padding: 15px;
-    background: #ffffff; /* Чисто белый */
+    background: #ffffff;
     border-radius: 20px;
     margin: 0 12px;
     overflow: hidden;
     position: relative;
-    border: 1px solid #e5e5ea; /* Тонкая рамка вместо тени */
+    border: 1px solid #e5e5ea;
   }
   #animal-img {
     max-width: 100%;
@@ -109,7 +109,7 @@
     color: #aaa;
   }
 
-  /* Клавиатура - без внешних теней */
+  /* Клавиатура */
   #keyboard {
     display: flex;
     height: 140px;
@@ -127,7 +127,6 @@
     font-weight: 700;
     font-size: 13px;
     color: #333;
-    /* Оставили только внутреннюю тень для объема, убрали внешнюю */
     box-shadow: inset 0 -6px 0 #e5e5ea; 
     transition: all 0.05s;
     cursor: pointer;
@@ -160,7 +159,7 @@
   <header>
     <h1>Пчела жужжит!</h1>
     <label class="btn">
-      Загрузить 8 рисунков
+      Загрузить 8 файлов
       <input id="fileInput" type="file" accept="image/*" multiple hidden>
     </label>
     <button id="clearBtn" class="btn" type="button">Сброс</button>
@@ -186,7 +185,7 @@
   </div>
 
   <div id="display-area">
-    <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 8 рисунков</div>
+    <div id="placeholder">Выбери картинку на клавиатуре,<br>или загрузи 8 файлов (можно гиф)</div>
     <img id="animal-img" alt="Животное">
   </div>
 
@@ -201,6 +200,7 @@ const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си', 
 
 let ctx = null;
 let master = null;
+// Теперь массив хранит объекты: { static: 'base64', animated: 'base64' | null }
 let images = new Array(NUM_KEYS).fill(null);
 let activeNotes = {}; 
 
@@ -348,17 +348,23 @@ function renderKeyboard() {
 
     if (!images[i]) btn.classList.add('empty-key');
 
+    // При нажатии - играем звук и включаем анимацию
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       btn.setPointerCapture(e.pointerId); 
       playNote(i);
       btn.classList.add('active');
-      showImage(i);
+      showImage(i, true); // true = показывать анимацию
     });
 
+    // При отпускании - глушим звук и возвращаем статичную картинку
     const release = () => {
       releaseNote(i);
       btn.classList.remove('active');
+      // Если на клавише что-то есть, возвращаем статичный кадр
+      if (images[i]) {
+         showImage(i, false);
+      }
     };
 
     btn.addEventListener('pointerup', release);
@@ -369,16 +375,25 @@ function renderKeyboard() {
   }
 }
 
-function showImage(index) {
+// Функция показа картинки
+function showImage(index, isPressed) {
   const imgData = images[index];
+  
   if (imgData) {
-    imgEl.src = imgData;
     imgEl.style.display = 'block';
     placeholderEl.style.display = 'none';
     
-    imgEl.classList.remove('animate-pop');
-    void imgEl.offsetWidth;
-    imgEl.classList.add('animate-pop');
+    // Если нажали и есть гифка - показываем гифку
+    if (isPressed && imgData.animated) {
+      imgEl.src = imgData.animated;
+      imgEl.classList.remove('animate-pop');
+      void imgEl.offsetWidth;
+      imgEl.classList.add('animate-pop');
+    } 
+    // Во всех остальных случаях (или если это обычная картинка) - показываем статику
+    else {
+      imgEl.src = imgData.static;
+    }
   } else {
     imgEl.style.display = 'none';
     placeholderEl.style.display = 'block';
@@ -386,33 +401,62 @@ function showImage(index) {
   }
 }
 
-function resizeImage(file) {
+// Чтение файла как DataURL
+function readFileAsDataURL(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (e) => resolve(e.target.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Обработка картинок (сжатие статических и извлечение первого кадра из гиф)
+async function processFile(file) {
+  const dataUrl = await readFileAsDataURL(file);
+
+  // Если это гифка
+  if (file.type === 'image/gif') {
+    return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
+        // Рисуем первый кадр на холсте, чтобы получить статичную картинку
         const canvas = document.createElement('canvas');
-        const MAX_SIZE = 800; 
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height && width > MAX_SIZE) {
-          height = Math.round(height * MAX_SIZE / width);
-          width = MAX_SIZE;
-        } else if (height > MAX_SIZE) {
-          width = Math.round(width * MAX_SIZE / height);
-          height = MAX_SIZE;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const staticPoster = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Возвращаем и статику, и оригинальную гифку
+        resolve({ static: staticPoster, animated: dataUrl });
       };
-      img.src = e.target.result;
+      img.src = dataUrl;
+    });
+  } 
+  
+  // Если обычная картинка
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX_SIZE = 800; 
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height && width > MAX_SIZE) {
+        height = Math.round(height * MAX_SIZE / width);
+        width = MAX_SIZE;
+      } else if (height > MAX_SIZE) {
+        width = Math.round(width * MAX_SIZE / height);
+        height = MAX_SIZE;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      resolve({ static: resizedDataUrl, animated: null });
     };
-    reader.readAsDataURL(file);
+    img.src = dataUrl;
   });
 }
 
@@ -427,35 +471,35 @@ fileInput.addEventListener('change', async () => {
   btnLabel.childNodes[0].nodeValue = 'Грузим... ';
 
   for (let i = 0; i < files.length; i++) {
-    const base64 = await resizeImage(files[i]);
-    images[i] = base64;
+    images[i] = await processFile(files[i]);
   }
 
   try {
-    localStorage.setItem('animalSynthImagesV2', JSON.stringify(images));
+    // Сохраняем в память (V3 - новая версия для поддержки гифок)
+    localStorage.setItem('animalSynthImagesV3', JSON.stringify(images));
   } catch (e) {
-    alert('Ошибка: не хватает памяти для сохранения картинок.');
+    alert('Ошибка: не хватает памяти для сохранения. Попробуйте загрузить гифки поменьше.');
   }
 
   btnLabel.childNodes[0].nodeValue = oldText;
   fileInput.value = '';
   renderKeyboard();
-  showImage(0);
+  showImage(0, false); // Показываем первую картинку (без анимации)
 });
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (confirm('Удалить все рисунки?')) {
     images = new Array(NUM_KEYS).fill(null);
-    localStorage.removeItem('animalSynthImagesV2');
+    localStorage.removeItem('animalSynthImagesV3');
     imgEl.style.display = 'none';
     placeholderEl.style.display = 'block';
-    placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 8 рисунков';
+    placeholderEl.innerHTML = 'Выбери картинку на клавиатуре,<br>или загрузи 8 файлов';
     renderKeyboard();
   }
 });
 
 function init() {
-  const saved = localStorage.getItem('animalSynthImagesV2');
+  const saved = localStorage.getItem('animalSynthImagesV3');
   if (saved) {
     try {
       images = JSON.parse(saved);
