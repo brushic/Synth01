@@ -52,7 +52,6 @@
   }
   .btn:active { background: #d1d1d6; }
   
-  /* Панель управления (крутилки) - без тени */
   #controls {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -81,7 +80,6 @@
     height: 24px;
   }
 
-  /* Область с картинкой */
   #display-area {
     flex: 1;
     min-height: 0;
@@ -109,7 +107,6 @@
     color: #aaa;
   }
 
-  /* Клавиатура */
   #keyboard {
     display: flex;
     height: 140px;
@@ -200,7 +197,6 @@ const NOTE_NAMES = ['До', 'Ре', 'Ми', 'Фа', 'Соль', 'Ля', 'Си', 
 
 let ctx = null;
 let master = null;
-// Теперь массив хранит объекты: { static: 'base64', animated: 'base64' | null }
 let images = new Array(NUM_KEYS).fill(null);
 let activeNotes = {}; 
 
@@ -211,29 +207,33 @@ const params = {
   filterCutoff: 2000
 };
 
-document.addEventListener('touchstart', function unlockAudio() {
+// 🔥 НАДЕЖНАЯ ФУНКЦИЯ ЗАПУСКА ЗВУКА
+function initAudio() {
   if (!ctx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     ctx = new AudioCtx();
     master = ctx.createGain();
     master.gain.value = 0.6;
+    
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -18;
     compressor.knee.value = 20;
     compressor.ratio.value = 6;
     compressor.attack.value = 0.003;
     compressor.release.value = 0.25;
+    
     master.connect(compressor).connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') ctx.resume();
   
-  const buffer = ctx.createBuffer(1, 1, 22050);
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(ctx.destination);
-  source.start(0);
-  document.removeEventListener('touchstart', unlockAudio);
-}, { once: true });
+  // Если iOS поставил звук на паузу (например, когда свернули браузер) - будим его
+  if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+    ctx.resume();
+  }
+}
+
+// Будим звук при любом касании экрана
+document.addEventListener('touchstart', initAudio, { passive: true });
+document.addEventListener('pointerdown', initAudio, { passive: true });
 
 function updateParams() {
   params.vibRate = +document.getElementById('vib').value;
@@ -260,6 +260,7 @@ function updateParams() {
 });
 
 function playNote(index) {
+  initAudio(); // Принудительно проверяем звук перед каждой нотой!
   if (!ctx) return;
   
   if (activeNotes[index]) {
@@ -318,7 +319,7 @@ function playNote(index) {
 }
 
 function releaseNote(index) {
-  if (!activeNotes[index]) return;
+  if (!activeNotes[index] || !ctx) return;
   const note = activeNotes[index];
   const now = ctx.currentTime;
 
@@ -348,20 +349,17 @@ function renderKeyboard() {
 
     if (!images[i]) btn.classList.add('empty-key');
 
-    // При нажатии - играем звук и включаем анимацию
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       btn.setPointerCapture(e.pointerId); 
       playNote(i);
       btn.classList.add('active');
-      showImage(i, true); // true = показывать анимацию
+      showImage(i, true);
     });
 
-    // При отпускании - глушим звук и возвращаем статичную картинку
     const release = () => {
       releaseNote(i);
       btn.classList.remove('active');
-      // Если на клавише что-то есть, возвращаем статичный кадр
       if (images[i]) {
          showImage(i, false);
       }
@@ -375,7 +373,6 @@ function renderKeyboard() {
   }
 }
 
-// Функция показа картинки
 function showImage(index, isPressed) {
   const imgData = images[index];
   
@@ -383,15 +380,12 @@ function showImage(index, isPressed) {
     imgEl.style.display = 'block';
     placeholderEl.style.display = 'none';
     
-    // Если нажали и есть гифка - показываем гифку
     if (isPressed && imgData.animated) {
       imgEl.src = imgData.animated;
       imgEl.classList.remove('animate-pop');
       void imgEl.offsetWidth;
       imgEl.classList.add('animate-pop');
-    } 
-    // Во всех остальных случаях (или если это обычная картинка) - показываем статику
-    else {
+    } else {
       imgEl.src = imgData.static;
     }
   } else {
@@ -401,7 +395,6 @@ function showImage(index, isPressed) {
   }
 }
 
-// Чтение файла как DataURL
 function readFileAsDataURL(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -410,30 +403,24 @@ function readFileAsDataURL(file) {
   });
 }
 
-// Обработка картинок (сжатие статических и извлечение первого кадра из гиф)
 async function processFile(file) {
   const dataUrl = await readFileAsDataURL(file);
 
-  // Если это гифка
   if (file.type === 'image/gif') {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
-        // Рисуем первый кадр на холсте, чтобы получить статичную картинку
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
         canvas.getContext('2d').drawImage(img, 0, 0);
         const staticPoster = canvas.toDataURL('image/jpeg', 0.8);
-        
-        // Возвращаем и статику, и оригинальную гифку
         resolve({ static: staticPoster, animated: dataUrl });
       };
       img.src = dataUrl;
     });
   } 
   
-  // Если обычная картинка
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -475,7 +462,6 @@ fileInput.addEventListener('change', async () => {
   }
 
   try {
-    // Сохраняем в память (V3 - новая версия для поддержки гифок)
     localStorage.setItem('animalSynthImagesV3', JSON.stringify(images));
   } catch (e) {
     alert('Ошибка: не хватает памяти для сохранения. Попробуйте загрузить гифки поменьше.');
@@ -484,7 +470,7 @@ fileInput.addEventListener('change', async () => {
   btnLabel.childNodes[0].nodeValue = oldText;
   fileInput.value = '';
   renderKeyboard();
-  showImage(0, false); // Показываем первую картинку (без анимации)
+  showImage(0, false); 
 });
 
 document.getElementById('clearBtn').addEventListener('click', () => {
